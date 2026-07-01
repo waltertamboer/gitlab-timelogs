@@ -4,3 +4,6 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
+    container_name: gitlab-timelogs
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html
