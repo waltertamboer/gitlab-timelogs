@@ -1,0 +1,2111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GitLab Timelogs — Day Overview</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #8b919e;
+    --accent: #fc6d26;
+    --accent-2: #6e49cb;
+    --radius: 12px;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 80% -10%, rgba(110,73,203,.18), transparent 60%),
+                radial-gradient(900px 500px at -10% 0%, rgba(252,109,38,.12), transparent 55%),
+                var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    line-height: 1.45;
+  }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ── Setup screen ── */
+  #setupScreen { min-height: 100vh; display: none; align-items: center; justify-content: center; padding: 32px 20px; }
+  #setupScreen.active { display: flex; }
+  .setup-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 32px; width: 100%; max-width: 480px;
+  }
+  .setup-card h1 { margin: 0 0 4px; font-size: 20px; letter-spacing: -.01em; }
+  .setup-card h1 .dot { color: var(--accent); }
+  .setup-card .sub { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+  .setup-card .fields { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── Main screen ── */
+  #mainScreen { max-width: 960px; margin: 0 auto; padding: 32px 20px 80px; }
+  header.app { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  header.app h1 { font-size: 20px; margin: 0; letter-spacing: -.01em; font-weight: 650; }
+  header.app h1 .dot { color: var(--accent); }
+  .user-chip {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 999px; padding: 5px 12px 5px 10px; font-size: 13px; color: var(--muted);
+  }
+  .user-chip strong { color: var(--text); }
+  .user-chip button { background: none; border: none; padding: 0; color: var(--muted); font-size: 11px; cursor: pointer; }
+  .user-chip button:hover { color: var(--accent); border: none; }
+
+  /* ── Shared ── */
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 9px; padding: 9px 11px; font-size: 14px; font-family: var(--sans); outline: none;
+  }
+  .field input:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(110,73,203,.15); }
+  .field input.err { border-color: #ff6b55; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .hint a { color: var(--accent); }
+  .ferr { font-size: 12px; color: #ff8d7a; margin-top: 2px; display: none; }
+  .ferr.on { display: block; }
+  button {
+    font-family: var(--sans); font-size: 14px; cursor: pointer; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px; padding: 9px 13px;
+    transition: border-color .15s; user-select: none;
+  }
+  button:hover { border-color: var(--accent-2); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1a0e06; font-weight: 600; }
+  button.icon { padding: 9px 12px; font-weight: 600; }
+  button.setup-primary { width: 100%; padding: 11px; font-size: 15px; margin-top: 8px; }
+
+  /* ── Toolbar ── */
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+  .toolbar .spacer { flex: 1; }
+
+  /* ── Custom date picker ── */
+  .datepicker { position: relative; }
+  .dp-trigger {
+    font-size: 14px; padding: 8px 14px; border-radius: 9px;
+    min-width: 190px; text-align: left; white-space: nowrap;
+  }
+  .dp-dropdown {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 200;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: 0 12px 40px rgba(0,0,0,.55); width: 274px;
+  }
+  .dp-header {
+    display: flex; align-items: center; gap: 2px;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+  }
+  .dp-title {
+    flex: 1; text-align: center; font-weight: 600; font-size: 14px;
+    background: none; border: none; color: var(--text); cursor: pointer;
+    border-radius: 7px; padding: 5px 4px;
+  }
+  .dp-title:hover { background: var(--panel-2); }
+  .dp-nav { padding: 5px 10px; font-size: 16px; font-weight: 700; }
+  .dp-body { padding: 8px; }
+  .dp-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 2px; }
+  .dp-weekday { text-align: center; font-size: 11px; color: var(--muted); padding: 3px 0; }
+  .dp-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+  .dp-day {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 13px; border-radius: 7px; cursor: pointer;
+    background: none; border: none; color: var(--text); padding: 0;
+  }
+  .dp-day:hover:not(.dp-sel) { background: var(--panel-2); }
+  .dp-day.dp-other  { color: var(--muted); opacity: .4; }
+  .dp-day.dp-today  { color: var(--accent); font-weight: 700; }
+  .dp-day.dp-sel    { background: var(--accent); color: #1a0e06; font-weight: 700; }
+  .dp-grid  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .dp-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .dp-cell {
+    text-align: center; font-size: 13px; padding: 9px 2px; border-radius: 7px;
+    background: none; border: none; color: var(--text); cursor: pointer;
+  }
+  .dp-cell:hover:not(.dp-sel) { background: var(--panel-2); }
+  .dp-cell.dp-sel  { background: var(--accent); color: #1a0e06; font-weight: 700; }
+  .dp-cell.dp-cur  { color: var(--accent); font-weight: 600; }
+  .dp-cell.dp-sel.dp-cur { color: #1a0e06; }
+
+  /* ── Stats ── */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .stat { padding: 16px; }
+  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .stat .value { font-size: 26px; font-weight: 680; margin-top: 6px; letter-spacing: -.02em; }
+  .stat .value.orange { color: var(--accent); }
+
+  /* ── Section headings ── */
+  .section-head { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 10px; }
+
+  /* ── Timelog groups ── */
+  .group { margin-bottom: 12px; overflow: hidden; }
+  .group-head {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    background: var(--panel-2); cursor: pointer; user-select: none;
+  }
+  .group-head:hover { background: color-mix(in srgb, var(--panel-2) 85%, var(--accent) 15%); }
+  .group-head .title { font-weight: 600; font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .group-head .title a { color: var(--text); text-decoration: none; }
+  .group-head .title a:hover { text-decoration: underline; color: var(--accent); }
+  .group-head .ref { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .group-head .gtime { font-family: var(--mono); font-weight: 700; color: var(--accent); font-size: 14px; flex: none; }
+  .group-chevron { font-size: 11px; color: var(--muted); flex: none; transition: transform .15s; }
+  .group.open .group-chevron { transform: rotate(90deg); }
+  .group-entries { display: none; border-top: 1px solid var(--border); }
+  .group.open .group-entries { display: block; }
+
+  /* ── Rows (shared by timelogs + events) ── */
+  .row { display: flex; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--border); align-items: baseline; }
+  .row:last-child { border-bottom: none; }
+  .row .rtime { font-family: var(--mono); font-size: 13px; color: var(--text); min-width: 56px; flex: none; }
+  .row .rdesc { font-size: 13.5px; flex: 1; min-width: 0; color: var(--muted); }
+  .row .rdesc.empty { font-style: italic; opacity: .6; }
+  .row .rdesc a { color: var(--text); text-decoration: none; }
+  .row .rdesc a:hover { text-decoration: underline; color: var(--accent); }
+  .row .rdesc code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px; color: var(--text); }
+  .row .rdesc strong { color: var(--text); font-weight: 600; }
+  .row .rproj { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .rdel { flex: none; opacity: 0; transition: opacity .1s; }
+  .row:hover .rdel { opacity: 1; }
+  .rdel-btn {
+    font-size: 11px; padding: 2px 7px; border-radius: 5px; font-weight: 600;
+    background: rgba(255,107,85,.1); border-color: rgba(255,107,85,.3); color: #ff8d7a;
+  }
+  .rdel-btn:hover { background: rgba(255,107,85,.25); border-color: #ff8d7a; }
+  .rdel-btn:disabled { opacity: .5; cursor: default; }
+
+  /* ── Badges ── */
+  .badge { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; letter-spacing: .04em; flex: none; text-transform: uppercase; }
+  .badge.issue  { background: rgba(45,161,96,.16);   color: #4fd28a; }
+  .badge.mr     { background: rgba(110,73,203,.18);  color: #b69bff; }
+  .badge.review { background: rgba(252,175,23,.15);  color: #fcaf17; }
+  .badge.push   { background: rgba(31,143,236,.16);  color: #74bbf8; }
+  .badge.note   { background: rgba(251,188,4,.14);   color: #f5c842; }
+  .badge.other  { background: rgba(139,145,158,.14); color: var(--muted); }
+
+  /* ── Empty / loading / error states ── */
+  .state { text-align: center; padding: 48px 20px; color: var(--muted); }
+  .state .big { font-size: 15px; color: var(--text); margin-bottom: 6px; }
+  .spinner { width: 20px; height: 20px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; margin: 0 auto 12px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .err-text { color: #ff8d7a; }
+
+  .two-col { display: flex; flex-direction: column; gap: 28px; }
+
+  /* ── Pinned issues ── */
+  .pinned-wrap {
+    border: 1px solid rgba(110,73,203,.28);
+    border-left: 3px solid var(--accent-2);
+    border-radius: var(--radius);
+    background: rgba(110,73,203,.05);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .pinned-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px;
+    font-size: 13px; font-weight: 600; color: #b69bff;
+    border-bottom: 1px solid rgba(110,73,203,.15);
+  }
+  .pinned-head .count {
+    margin-left: auto; font-weight: 700; font-family: var(--mono);
+    background: rgba(110,73,203,.18); color: #b69bff;
+    padding: 1px 8px; border-radius: 5px; font-size: 12px;
+  }
+
+  /* ── Pin / unpin buttons ── */
+  .pin-btn {
+    font-size: 11px; padding: 2px 8px; border-radius: 5px; font-weight: 600;
+    background: rgba(110,73,203,.14); border-color: rgba(110,73,203,.3); color: #b69bff;
+    white-space: nowrap; flex: none;
+  }
+  .pin-btn:hover { background: rgba(110,73,203,.28); border-color: var(--accent-2); }
+  .pin-btn.pinned {
+    background: rgba(110,73,203,.28); border-color: var(--accent-2); color: #d0bcff;
+  }
+  .row-actions { flex: none; display: flex; align-items: center; gap: 6px; }
+  .pin-log-btn {
+    font-size: 11px; padding: 2px 8px; border-radius: 5px; font-weight: 600; white-space: nowrap;
+    background: rgba(252,109,38,.12); border-color: rgba(252,109,38,.3); color: var(--accent);
+  }
+  .pin-log-btn:hover { background: rgba(252,109,38,.24); border-color: var(--accent); }
+  .pin-log-btn:disabled { opacity: .45; cursor: default; }
+
+  /* ── Day type banner ── */
+  .day-banner {
+    display: flex; align-items: center; gap: 10px;
+    border-radius: var(--radius); padding: 11px 16px; margin-bottom: 18px;
+    font-size: 14px; font-weight: 500; border: 1px solid; border-left-width: 3px;
+  }
+  .day-banner.sick     { background: rgba(251,188,4,.07); border-color: rgba(251,188,4,.25); border-left-color: #f5c842; color: #f5c842; }
+  .day-banner.vacation { background: rgba(45,161,96,.07); border-color: rgba(45,161,96,.25); border-left-color: #2da160; color: #4fd28a; }
+  .day-banner .clear-btn {
+    margin-left: auto; font-size: 12px; padding: 2px 9px; border-radius: 5px; font-weight: 600;
+    background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.15); color: inherit;
+  }
+  .day-banner .clear-btn:hover { background: rgba(255,255,255,.12); }
+  button.day-type-btn { font-size: 13px; padding: 7px 11px; }
+  button.day-type-btn.active-sick     { background: rgba(251,188,4,.14); border-color: #f5c842; color: #f5c842; }
+  button.day-type-btn.active-vacation { background: rgba(45,161,96,.14);  border-color: #2da160; color: #4fd28a; }
+
+  /* ── Log time card ── */
+  .logtime-card { margin-bottom: 20px; overflow: hidden; }
+  .logtime-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; font-size: 13px; font-weight: 600; color: var(--text);
+    background: var(--panel-2); border-bottom: 1px solid var(--border);
+  }
+  .lt-total { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent); }
+  .lt-total.over { color: #ff8d7a; }
+  /* allocation bar */
+  .lt-bar-wrap { height: 6px; display: flex; background: var(--panel-2); border-bottom: 1px solid var(--border); overflow: hidden; }
+  .lt-bar-seg { height: 100%; transition: width .15s; }
+  .lt-bar-rem { flex: 1; background: var(--border); }
+  .lt-bar-over { background: rgba(255,107,85,.5); }
+  /* rows */
+  .logtime-row {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+  }
+  .logtime-row:last-child { border-bottom: none; }
+  .lt-row-title { display: flex; align-items: center; gap: 8px; }
+  .lt-row-title a {
+    flex: 1; min-width: 0; color: var(--text); text-decoration: none;
+    font-size: 14px; font-weight: 500; word-break: break-word;
+  }
+  .lt-row-title a:hover { color: var(--accent); text-decoration: underline; }
+  .lt-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .lt-row-controls { display: flex; align-items: center; gap: 10px; padding-left: 17px; }
+  .lt-review-hint { font-size: 11px; color: #fcaf17; opacity: .75; flex: none; }
+  .logtime-summary {
+    flex: 1; min-width: 80px;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 7px; padding: 5px 9px; font-size: 13px; font-family: var(--sans); outline: none;
+  }
+  .logtime-summary:focus { border-color: var(--accent-2); }
+  /* step controls */
+  .lt-controls { display: flex; align-items: center; gap: 5px; flex: none; }
+  .lt-adj {
+    width: 28px; height: 28px; padding: 0; text-align: center; line-height: 1;
+    font-size: 16px; font-weight: 700; border-radius: 7px; flex: none;
+  }
+  .logtime-hours {
+    width: 56px; text-align: center;
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 7px; padding: 5px 6px; font-size: 14px; font-family: var(--mono); outline: none;
+  }
+  .logtime-hours:focus { border-color: var(--accent-2); }
+  .logtime-hours.has-value { font-weight: 700; }
+  .lt-unit { font-size: 13px; color: var(--muted); }
+  .lt-pct { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; }
+  /* footer */
+  .logtime-footer {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 16px; background: var(--panel-2); border-top: 1px solid var(--border);
+  }
+  .logtime-footer .spacer { flex: 1; }
+  .logtime-status { font-size: 13px; color: var(--muted); }
+  .logtime-status.ok  { color: #4fd28a; }
+  .logtime-status.err { color: #ff8d7a; }
+  .row-result { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; flex: none; display: none; }
+  .row-result.ok  { display: inline-block; background: rgba(45,161,96,.16);  color: #4fd28a; }
+  .row-result.err { display: inline-block; background: rgba(255,107,85,.14); color: #ff8d7a; }
+
+  /* ── Unlogged issues callout ── */
+  .unlogged-wrap {
+    border: 1px solid rgba(245,200,66,.22);
+    border-left: 3px solid #f5c842;
+    border-radius: var(--radius);
+    background: rgba(245,200,66,.04);
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .unlogged-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px;
+    font-size: 13px; font-weight: 600; color: #f5c842;
+    border-bottom: 1px solid rgba(245,200,66,.12);
+  }
+  .unlogged-head .count {
+    margin-left: auto; font-weight: 700; font-family: var(--mono);
+    background: rgba(245,200,66,.14); color: #f5c842;
+    padding: 1px 8px; border-radius: 5px; font-size: 12px;
+  }
+  .unlogged-via { color: var(--muted); font-size: 12px; margin-left: 8px; }
+  .unlogged-via code {
+    font-family: var(--mono); font-size: 11px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    padding: 1px 5px; border-radius: 4px; color: var(--text);
+  }
+
+  /* ── Issue detail panel ── */
+  .ip-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 300;
+    opacity: 0; pointer-events: none; transition: opacity .18s;
+  }
+  .ip-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; width: 480px; max-width: 100vw;
+    background: var(--panel); border-left: 1px solid var(--border);
+    display: flex; flex-direction: column; z-index: 301;
+    transform: translateX(100%); transition: transform .2s ease;
+    overflow: hidden;
+  }
+  .issue-panel.open .ip-overlay  { opacity: 1; pointer-events: auto; }
+  .issue-panel.open .ip-drawer   { transform: translateX(0); }
+  .ip-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+    background: var(--panel-2); flex: none;
+  }
+  .ip-head .spacer { flex: 1; }
+  .ip-close {
+    padding: 4px 9px; font-size: 15px; border-radius: 7px; line-height: 1;
+  }
+  .ip-body { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .ip-title { font-size: 16px; font-weight: 700; line-height: 1.4; }
+  .ip-meta { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-size: 13px; }
+  .ip-meta-key { color: var(--muted); white-space: nowrap; }
+  .ip-meta-val { color: var(--text); }
+  .ip-meta-val a { color: var(--accent); text-decoration: none; }
+  .ip-meta-val a:hover { text-decoration: underline; }
+  .ip-label-chip {
+    display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px;
+    margin: 1px 2px; font-weight: 600;
+  }
+  .ip-sep { border: none; border-top: 1px solid var(--border); margin: 0; }
+  .ip-desc-head { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .05em; }
+  .ip-desc {
+    font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap;
+    font-family: var(--sans); word-break: break-word;
+  }
+  .ip-desc code { font-family: var(--mono); font-size: 12px; background: var(--panel-2); padding: 1px 4px; border-radius: 4px; }
+  .ip-desc strong { font-weight: 700; }
+  .ip-desc em { font-style: italic; }
+  .ip-footer {
+    padding: 12px 16px; border-top: 1px solid var(--border); background: var(--panel-2);
+    flex: none; display: flex; gap: 8px;
+  }
+  .ip-open-btn {
+    font-size: 13px; padding: 7px 14px; border-radius: 9px; font-weight: 600;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    text-decoration: none; display: inline-block;
+  }
+  .ip-open-btn:hover { background: var(--panel-2); border-color: var(--accent-2); color: var(--text); }
+  button.active { background: var(--panel-2); border-color: var(--accent-2); color: var(--text); }
+  /* detail trigger button */
+  .detail-btn {
+    font-size: 11px; padding: 2px 7px; border-radius: 5px; font-weight: 600; white-space: nowrap; flex: none;
+    background: var(--panel-2); border-color: var(--border); color: var(--muted);
+  }
+  .detail-btn:hover { color: var(--text); border-color: var(--accent-2); }
+
+  /* ── Calendar ── */
+  .cal-wrap { margin-bottom: 18px; }
+  .cal-nav {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 16px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: none;
+  }
+  .cal-nav .cal-title { font-weight: 700; font-size: 14px; flex: 1; text-align: center; }
+  .cal-nav .spacer { flex: 1; }
+  .cal-legend { display: flex; align-items: center; gap: 12px; font-size: 11px; color: var(--muted); }
+  .cal-legend-dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+  .cal-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    border: 1px solid var(--border); border-radius: 0 0 var(--radius) var(--radius);
+    overflow: hidden;
+  }
+  .cal-dow {
+    text-align: center; font-size: 11px; font-weight: 700; color: var(--muted);
+    padding: 7px 4px; background: var(--panel-2); border-bottom: 1px solid var(--border);
+    letter-spacing: .04em;
+  }
+  .cal-dow.weekend { opacity: .5; }
+  .cal-cell {
+    padding: 7px 8px; min-height: 62px; border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border); cursor: pointer; position: relative;
+    transition: background .1s;
+  }
+  .cal-cell:nth-child(7n) { border-right: none; }
+  .cal-cell:hover { background: var(--panel-2) !important; }
+  .cal-cell.empty { cursor: default; background: rgba(0,0,0,.03); }
+  .cal-cell.empty:hover { background: rgba(0,0,0,.03) !important; }
+  .cal-cell.weekend { opacity: .55; cursor: default; }
+  .cal-cell.weekend:hover { background: transparent !important; }
+  .cal-cell.day-off { cursor: default; }
+  .cal-cell.day-off:hover { background: inherit !important; }
+  .cal-cell.is-today .cal-num { color: var(--accent); font-weight: 800; }
+  .cal-cell.is-selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .cal-cell.future { opacity: .35; cursor: default; }
+  .cal-cell.future:hover { background: transparent !important; }
+  .cal-num { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .cal-hours { font-size: 13px; font-weight: 700; font-family: var(--mono); color: var(--text); }
+  .cal-bar { height: 3px; border-radius: 2px; margin-top: 5px; background: var(--border); overflow: hidden; }
+  .cal-bar-fill { height: 100%; border-radius: 2px; transition: width .2s; }
+  .cal-type-tag { font-size: 10px; font-weight: 700; margin-top: 3px; opacity: .75; }
+  .cal-loading { grid-column: 1/-1; text-align: center; padding: 32px; color: var(--muted); font-size: 14px; }
+
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .row .rproj { display: none; }
+    .ip-drawer { width: 100vw; }
+    .cal-cell { min-height: 48px; padding: 5px 6px; }
+    .cal-hours { font-size: 12px; }
+  }
+  @media (max-width: 420px) {
+    .stats { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ SETUP SCREEN ══ -->
+<div id="setupScreen" class="screen">
+  <div class="setup-card">
+    <h1>GitLab Timelogs<span class="dot">.</span></h1>
+    <div class="sub">Connect your GitLab account to get started.</div>
+    <div class="fields">
+      <div class="field">
+        <label for="cfgToken">Personal Access Token <span style="opacity:.6">(scope: <code>read_api</code>)</span></label>
+        <input type="password" id="cfgToken" placeholder="glpat-…" autocomplete="off" spellcheck="false">
+        <div class="hint">
+          Create one at <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank" rel="noopener">gitlab.com → Access Tokens</a>.
+          Stored only in your browser's localStorage.
+        </div>
+        <div class="ferr" id="cfgTokenErr">Token is required.</div>
+      </div>
+      <div class="field">
+        <label for="cfgUsername">GitLab username</label>
+        <input type="text" id="cfgUsername" placeholder="your-gitlab-username" autocomplete="off" spellcheck="false">
+        <div class="hint">Your exact GitLab username (required by the API).</div>
+        <div class="ferr" id="cfgUsernameErr">Username is required.</div>
+      </div>
+      <div class="field">
+        <label for="cfgApiBase">API base</label>
+        <input type="text" id="cfgApiBase" value="https://gitlab.com" autocomplete="off" spellcheck="false">
+        <div class="hint">Change only for self-hosted instances.</div>
+      </div>
+      <button class="primary setup-primary" id="cfgSaveBtn">Save &amp; continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MAIN SCREEN ══ -->
+<div id="mainScreen" class="screen">
+  <header class="app">
+    <h1>GitLab Timelogs<span class="dot">.</span></h1>
+    <div class="user-chip">
+      <strong id="mainUsername"></strong>
+      <button id="resetBtn" title="Change settings">✕</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <button class="icon" id="prevDay">‹</button>
+    <div class="datepicker" id="datePicker">
+      <button class="dp-trigger" id="dpTrigger"></button>
+      <div class="dp-dropdown" id="dpDropdown" hidden>
+        <div class="dp-header">
+          <button class="dp-nav" id="dpPrev">‹</button>
+          <button class="dp-title" id="dpTitle"></button>
+          <button class="dp-nav" id="dpNext">›</button>
+        </div>
+        <div class="dp-body" id="dpBody"></div>
+      </div>
+    </div>
+    <input type="date" id="dateInput" hidden>
+    <button class="icon" id="nextDay">›</button>
+    <button id="todayBtn">Today</button>
+    <button id="calToggleBtn">Calendar</button>
+    <button class="day-type-btn" id="sickBtn">Sick day</button>
+    <button class="day-type-btn" id="vacationBtn">Vacation</button>
+    <div class="spacer"></div>
+    <button class="primary" id="loadBtn">Load</button>
+  </div>
+
+  <div id="dayBanner" hidden></div>
+
+  <!-- Calendar panel -->
+  <div id="calendarWrap" class="cal-wrap" hidden>
+    <div class="cal-nav">
+      <button class="icon" id="calPrev">‹</button>
+      <span class="cal-title" id="calTitle"></span>
+      <button class="icon" id="calNext">›</button>
+      <div class="spacer"></div>
+      <div class="cal-legend">
+        <span class="cal-legend-dot" style="background:rgba(79,210,138,.6)"></span>8h+
+        <span class="cal-legend-dot" style="background:rgba(252,109,38,.55)"></span>Partial
+        <span class="cal-legend-dot" style="background:rgba(255,107,85,.35)"></span>None
+      </div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <div class="stats">
+    <div class="card stat">
+      <div class="label">Total time</div>
+      <div class="value orange" id="statTotal">—</div>
+    </div>
+    <div class="card stat">
+      <div class="label">Time entries</div>
+      <div class="value" id="statEntries">—</div>
+    </div>
+    <div class="card stat">
+      <div class="label">Items worked</div>
+      <div class="value" id="statItems">—</div>
+    </div>
+    <div class="card stat">
+      <div class="label">Activity events</div>
+      <div class="value" id="statEvents">—</div>
+    </div>
+  </div>
+
+  <!-- pinned issues — always visible when there are pins -->
+  <div id="pinnedWrap" class="pinned-wrap" hidden>
+    <div class="pinned-head">
+      Pinned issues
+      <span class="count" id="pinnedCount"></span>
+    </div>
+    <div id="pinnedList"></div>
+  </div>
+
+  <!-- quick log-time card -->
+  <div id="logTimeCard" class="card logtime-card" hidden>
+    <div class="logtime-head">
+      Log time for <span id="logTimeDate"></span>
+      <span class="lt-total" id="ltTotal">0h / 8h</span>
+    </div>
+    <div class="lt-bar-wrap"><div id="ltBar" style="display:contents"></div></div>
+    <div id="logTimeRows"></div>
+    <div class="logtime-footer">
+      <button id="ltDistribute">Distribute evenly</button>
+      <div class="spacer"></div>
+      <div class="logtime-status" id="logTimeStatus"></div>
+      <span class="lt-total" id="ltTotalFooter">0h / 8h</span>
+      <button id="logTimeSubmit" class="primary">Submit</button>
+    </div>
+  </div>
+
+  <!-- unlogged issues callout — hidden until analysis is done -->
+  <div id="unloggedWrap" class="unlogged-wrap" hidden>
+    <div class="unlogged-head">
+      Issues worked on with no time logged
+      <span class="count" id="unloggedCount"></span>
+    </div>
+    <div id="unloggedList"></div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="section-head">Time logged</div>
+      <div id="timelogResults">
+        <div class="state"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <div>
+      <div class="section-head">Activity</div>
+      <div id="activityResults">
+        <div class="state"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Issue detail panel -->
+  <div class="issue-panel" id="issuePanel">
+    <div class="ip-overlay" id="ipOverlay"></div>
+    <div class="ip-drawer">
+      <div class="ip-head">
+        <span class="badge issue" id="ipBadge">ISSUE</span>
+        <span id="ipRef" style="font-family:var(--mono);font-size:13px;color:var(--muted)"></span>
+        <div class="spacer"></div>
+        <button class="ip-close" id="ipClose">✕</button>
+      </div>
+      <div class="ip-body">
+        <div class="ip-title" id="ipTitle"></div>
+        <div class="ip-meta" id="ipMeta"></div>
+        <hr class="ip-sep">
+        <div class="ip-desc-head">DESCRIPTION</div>
+        <div class="ip-desc" id="ipDesc"></div>
+      </div>
+      <div class="ip-footer">
+        <a id="ipOpenLink" class="ip-open-btn" href="#" target="_blank" rel="noopener">Open in GitLab ↗</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const $ = id => document.getElementById(id);
+const LS = { token: "glt_token", username: "glt_username", apiBase: "glt_apiBase", date: "glt_date" };
+
+function getConfig() {
+  return {
+    token:    localStorage.getItem(LS.token)    || "",
+    username: localStorage.getItem(LS.username) || "",
+    apiBase: (localStorage.getItem(LS.apiBase)  || "https://gitlab.com").replace(/\/+$/, ""),
+  };
+}
+function isConfigured() { const c = getConfig(); return !!(c.token && c.username); }
+
+// ── Screen routing ──
+function showSetup() {
+  $("mainScreen").classList.remove("active");
+  $("setupScreen").classList.add("active");
+  const c = getConfig();
+  $("cfgToken").value    = c.token;
+  $("cfgUsername").value = c.username;
+  $("cfgApiBase").value  = c.apiBase || "https://gitlab.com";
+}
+function showMain() {
+  $("setupScreen").classList.remove("active");
+  $("mainScreen").classList.add("active");
+  $("mainUsername").textContent = "@" + getConfig().username;
+}
+
+// ── Setup validation ──
+$("cfgSaveBtn").addEventListener("click", () => {
+  const token    = $("cfgToken").value.trim();
+  const username = $("cfgUsername").value.trim();
+  let ok = true;
+  [$("cfgToken"), $("cfgTokenErr")].forEach((el, i) => {
+    const missing = i === 0 ? !token : !token;
+    el.classList.toggle(i === 0 ? "err" : "on", !token);
+  });
+  [$("cfgUsername"), $("cfgUsernameErr")].forEach((el, i) => {
+    el.classList.toggle(i === 0 ? "err" : "on", !username);
+  });
+  if (!token || !username) return;
+  localStorage.setItem(LS.token,    token);
+  localStorage.setItem(LS.username, username);
+  localStorage.setItem(LS.apiBase, ($("cfgApiBase").value.trim() || "https://gitlab.com").replace(/\/+$/, ""));
+  cachedUserId = null;
+  showMain();
+  DP.init();
+  load();
+});
+$("resetBtn").addEventListener("click", showSetup);
+
+// ── Date helpers ──
+function toISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+function shiftISODate(isoDate, days) {
+  const d = new Date(`${isoDate}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+function dayBounds(isoDate) {
+  return {
+    startTime: new Date(`${isoDate}T00:00:00`).toISOString(),
+    endTime:   new Date(`${isoDate}T23:59:59.999`).toISOString(),
+  };
+}
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+function fmtDuration(s) {
+  if (!s) return "0m";
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h && m ? `${h}h ${m}m` : h ? `${h}h` : `${m}m`;
+}
+function shiftDay(delta) {
+  const d = new Date(`${$("dateInput").value}T12:00:00`);
+  do { d.setDate(d.getDate() + delta); } while (d.getDay() === 0 || d.getDay() === 6);
+  $("dateInput").value = toISODate(d);
+  localStorage.setItem(LS.date, $("dateInput").value);
+  renderDayBanner($("dateInput").value);
+  DP.updateTrigger();
+  load();
+}
+
+// ── HTML escaping ──
+function esc(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// ══════════════════════════════════════════
+// TIMELOGS  (GraphQL)
+// ══════════════════════════════════════════
+const TL_QUERY = `
+query DayTimelogs($username: String!, $startTime: Time, $endTime: Time, $after: String) {
+  timelogs(username: $username, startTime: $startTime, endTime: $endTime, first: 100, after: $after) {
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      id timeSpent spentAt summary
+      project { fullPath }
+      issue { iid title webUrl }
+      mergeRequest { iid title webUrl }
+    }
+  }
+}`;
+
+async function gqlPage(apiBase, token, vars, signal) {
+  const res = await fetch(`${apiBase}/api/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ query: TL_QUERY, variables: vars }),
+    signal,
+  });
+  if (!res.ok) { const t = await res.text().catch(()=>""); throw new Error(`GraphQL HTTP ${res.status}: ${t.slice(0,200)}`); }
+  const json = await res.json();
+  if (json.errors?.length) throw new Error(json.errors.map(e => e.message).join("; "));
+  return json.data.timelogs;
+}
+
+async function fetchTimelogs(apiBase, token, username, startTime, endTime, signal) {
+  let after = null, all = [], guard = 0;
+  do {
+    const page = await gqlPage(apiBase, token, { username, startTime, endTime, after }, signal);
+    all = all.concat(page.nodes);
+    after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  } while (after && ++guard < 50);
+  return all;
+}
+
+function renderTimelogs(nodes) {
+  const groups = new Map();
+  let total = 0;
+  for (const n of nodes) {
+    total += n.timeSpent;
+    const project = n.project?.fullPath ?? "";
+    let key, type, title, url, ref;
+    if (n.issue) {
+      type="issue"; ref=`#${n.issue.iid}`; title=n.issue.title; url=n.issue.webUrl;
+      key=`i:${project}:${n.issue.iid}`;
+    } else if (n.mergeRequest) {
+      type="mr"; ref=`!${n.mergeRequest.iid}`; title=n.mergeRequest.title; url=n.mergeRequest.webUrl;
+      key=`m:${project}:${n.mergeRequest.iid}`;
+    } else {
+      type="other"; ref=""; title="Other / project-level"; url=null; key=`o:${project}`;
+    }
+    if (!groups.has(key)) groups.set(key, { type, title, url, ref, project, total:0, entries:[] });
+    const g = groups.get(key);
+    g.total += n.timeSpent;
+    g.entries.push(n);
+  }
+
+  $("statTotal").textContent   = fmtDuration(total);
+  $("statEntries").textContent = nodes.length;
+  $("statItems").textContent   = groups.size;
+
+  if (!nodes.length) {
+    $("timelogResults").innerHTML = `<div class="state"><div class="big">No time logged.</div></div>`;
+    return;
+  }
+
+  const sorted = [...groups.values()].sort((a,b) => b.total - a.total);
+  const autoOpen = sorted.length === 1;
+  $("timelogResults").innerHTML = sorted.map(g => {
+    const titleHtml = g.url
+      ? `<a href="${esc(g.url)}" target="_blank" rel="noopener">${esc(g.title)}</a>`
+      : esc(g.title);
+    const entries = g.entries
+      .sort((a,b) => new Date(a.spentAt) - new Date(b.spentAt))
+      .map(e => `
+        <div class="row">
+          <div class="rtime">${fmtDuration(e.timeSpent)}</div>
+          <div class="rdesc ${e.summary?"":"empty"}">${e.summary ? esc(e.summary) : "no summary"}</div>
+          <div class="rproj">${esc(e.project?.fullPath ?? "")}</div>
+          <div class="rdel"><button class="rdel-btn" data-timelog-id="${esc(e.id)}">Remove</button></div>
+        </div>`).join("");
+    const pinBtn = g.type === "issue" && g.url ? `
+      <button class="pin-btn${isPinned(g.url)?" pinned":""}"
+        data-pin-url="${esc(g.url)}"
+        data-pin-iid="${esc(g.ref.replace('#',''))}"
+        data-pin-title="${esc(g.title)}"
+        data-pin-proj="${esc(g.project)}"
+      >${isPinned(g.url)?"Pinned":"Pin"}</button>` : "";
+    return `
+      <div class="card group${autoOpen ? " open" : ""}">
+        <div class="group-head">
+          <span class="group-chevron">▶</span>
+          <span class="badge ${g.type}">${g.type==="issue"?"ISSUE":g.type==="mr"?"MR":"OTHER"}</span>
+          <span class="title">${titleHtml}${g.ref ? ` <span class="ref">${esc(g.ref)}</span>` : ""}</span>
+          ${pinBtn}
+          <span class="gtime">${fmtDuration(g.total)}</span>
+        </div>
+        <div class="group-entries">${entries}</div>
+      </div>`;
+  }).join("");
+}
+
+// ══════════════════════════════════════════
+// EVENTS  (REST)
+// ══════════════════════════════════════════
+let cachedUserId = null;
+
+async function resolveUserId(apiBase, token, username, signal) {
+  if (cachedUserId) return cachedUserId;
+  const res = await fetch(`${apiBase}/api/v4/users?username=${encodeURIComponent(username)}&per_page=1`, {
+    headers: { "Authorization": `Bearer ${token}` }, signal,
+  });
+  if (!res.ok) throw new Error(`User lookup HTTP ${res.status}`);
+  const users = await res.json();
+  if (!users.length) throw new Error(`GitLab user "${username}" not found.`);
+  cachedUserId = users[0].id;
+  return cachedUserId;
+}
+
+async function resolveProjectPaths(events, apiBase, token, signal) {
+  const ids = [...new Set(events.map(e => e.project_id).filter(Boolean))];
+  const map = new Map();
+  await Promise.all(ids.map(async id => {
+    const res = await fetch(`${apiBase}/api/v4/projects/${id}`, {
+      headers: { "Authorization": `Bearer ${token}` }, signal,
+    });
+    if (!res.ok) return;
+    const p = await res.json();
+    if (p.path_with_namespace) map.set(id, p.path_with_namespace);
+  }));
+  return map;
+}
+
+async function fetchEvents(apiBase, token, userId, isoDate, signal) {
+  // GitLab's after/before are date-only and inclusive on that day,
+  // but implementation varies — fetch ±1 day and filter client-side.
+  const after  = shiftISODate(isoDate, -1);
+  const before = shiftISODate(isoDate, +1);
+  const dayStart = new Date(`${isoDate}T00:00:00`).getTime();
+  const dayEnd   = new Date(`${isoDate}T23:59:59.999`).getTime();
+
+  let page = 1, all = [];
+  for (;;) {
+    const url = `${apiBase}/api/v4/users/${userId}/events?after=${after}&before=${before}&per_page=100&page=${page}`;
+    const res = await fetch(url, { headers: { "Authorization": `Bearer ${token}` }, signal });
+    if (!res.ok) throw new Error(`Events API HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.length) break;
+    all = all.concat(data);
+    const total = parseInt(res.headers.get("X-Total-Pages") || "1", 10);
+    if (page >= total) break;
+    page++;
+  }
+  // Filter to selected local day
+  return all
+    .filter(e => { const t = new Date(e.created_at).getTime(); return t >= dayStart && t <= dayEnd; })
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+}
+
+function describeEvent(e, apiBase, projectPaths = new Map()) {
+  const action      = (e.action_name || "").trim();
+  const targetType  = e.target_type  || "";
+  const targetTitle = e.target_title || "";
+  const proj        = e.project?.path_with_namespace || projectPaths.get(e.project_id) || "";
+
+  // Encode a branch/tag ref for use in a URL path (preserve slashes)
+  const encodeRef = r => r.split("/").map(encodeURIComponent).join("/");
+  // Wrap text in an anchor only when url is truthy
+  const link = (url, html) => url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${html}</a>` : html;
+
+  // ── Push events ──
+  if (e.push_data) {
+    const pd  = e.push_data;
+    const ref = pd.ref || "";
+    const cnt = pd.commit_count || 0;
+    const act = pd.action    || "pushed";   // pushed | force_pushed | created | removed
+    const rt  = pd.ref_type  || "branch";   // branch | tag
+    const ct  = pd.commit_title || "";
+    const to  = pd.commit_to   || "";
+    const from = pd.commit_from || "";
+
+    const branchUrl = proj ? `${apiBase}/${proj}/-/tree/${encodeRef(ref)}` : null;
+    const commitUrl = proj && to
+      ? (cnt > 1 && from ? `${apiBase}/${proj}/-/compare/${from}...${to}` : `${apiBase}/${proj}/-/commit/${to}`)
+      : null;
+
+    const refHtml    = link(act !== "removed" ? branchUrl : null, `<code>${esc(ref)}</code>`);
+    const commitHtml = ct ? ` — ${link(commitUrl, esc(ct))}` : "";
+
+    if (act === "removed") return { badge:"push", label:"PUSH", text:`Deleted ${rt} <code>${esc(ref)}</code>` };
+    if (act === "created") return { badge:"push", label:"PUSH", text:`Created ${rt} ${refHtml}${commitHtml}` };
+    const verb = act === "force_pushed" ? "Force-pushed" : "Pushed";
+    const cw   = cnt === 1 ? "commit" : "commits";
+    return { badge:"push", label:"PUSH", text:`${verb} ${cnt} ${cw} to ${refHtml}${commitHtml}` };
+  }
+
+  // ── Issue / WorkItem events ──
+  if (targetType === "Issue" || targetType === "WorkItem") {
+    const iid  = e.target_iid || e.target_id;
+    const path = targetType === "WorkItem" ? "work_items" : "issues";
+    const url  = proj ? `${apiBase}/${proj}/-/${path}/${iid}` : null;
+    return { badge:"issue", label:"ISSUE",
+      text:`${cap(action)} issue ${link(url, `#${iid}: ${esc(targetTitle)}`)}` };
+  }
+
+  // ── MR events ──
+  if (targetType === "MergeRequest") {
+    const iid = e.target_iid || e.target_id;
+    const url = proj ? `${apiBase}/${proj}/-/merge_requests/${iid}` : null;
+    return { badge:"mr", label:"MR",
+      text:`${cap(action)} MR ${link(url, `!${iid}: ${esc(targetTitle)}`)}` };
+  }
+
+  // ── Note / comment events ──
+  if (targetType === "Note" || targetType === "DiscussionNote") {
+    const nt  = e.note?.noteable_type || "";
+    const iid = e.note?.noteable_iid;
+    let noteUrl = null;
+    if (proj && iid) {
+      if      (nt === "MergeRequest") noteUrl = `${apiBase}/${proj}/-/merge_requests/${iid}`;
+      else if (nt === "Issue")        noteUrl = `${apiBase}/${proj}/-/issues/${iid}`;
+      else if (nt === "Commit" && e.note?.commit_id) noteUrl = `${apiBase}/${proj}/-/commit/${e.note.commit_id}`;
+    }
+    const label = iid ? `${nt} ${nt === "MergeRequest" ? "!" : "#"}${iid}` : (targetTitle || "a thread");
+    return { badge:"note", label:"NOTE", text:`Commented on ${link(noteUrl, esc(label))}` };
+  }
+
+  // ── Fallback ──
+  const label = targetType ? targetType.replace(/([A-Z])/g, " $1").trim() : "Event";
+  return { badge:"other", label:"OTHER",
+    text:`${cap(action)}${targetTitle ? ` ${esc(targetTitle)}` : ""} (${esc(label)})` };
+}
+
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ""; }
+
+function renderActivity(events, apiBase, projectPaths = new Map()) {
+  $("statEvents").textContent = events.length;
+
+  if (!events.length) {
+    $("activityResults").innerHTML = `<div class="state"><div class="big">No activity.</div></div>`;
+    return;
+  }
+
+  const rows = events.map(e => {
+    const { badge, label, text } = describeEvent(e, apiBase, projectPaths);
+    const proj = e.project?.path_with_namespace ?? "";
+    return `
+      <div class="row">
+        <div class="rtime">${fmtTime(e.created_at)}</div>
+        <div class="rdesc"><span class="badge ${badge}">${label}</span> ${text}</div>
+        <div class="rproj">${esc(proj)}</div>
+      </div>`;
+  }).join("");
+
+  $("activityResults").innerHTML = `<div class="card" style="overflow:hidden">${rows}</div>`;
+}
+
+// ══════════════════════════════════════════
+// PINNED ISSUES
+// ══════════════════════════════════════════
+
+function loadPins() {
+  try { return JSON.parse(localStorage.getItem("glt_pins") || "[]"); } catch { return []; }
+}
+function savePins(pins) {
+  localStorage.setItem("glt_pins", JSON.stringify(pins));
+}
+function isPinned(webUrl) {
+  return loadPins().some(p => p.webUrl === webUrl);
+}
+function pinIssue(data) {
+  const pins = loadPins().filter(p => p.webUrl !== data.webUrl);
+  pins.unshift(data); // newest first
+  savePins(pins);
+  renderPinned();
+  refreshPinButtons();
+}
+function unpinIssue(webUrl) {
+  savePins(loadPins().filter(p => p.webUrl !== webUrl));
+  renderPinned();
+  refreshPinButtons();
+}
+
+function renderPinned() {
+  const pins = loadPins();
+  const wrap = $("pinnedWrap");
+  if (!pins.length) { wrap.hidden = true; return; }
+  $("pinnedCount").textContent = pins.length;
+  $("pinnedList").innerHTML = pins.map(p => `
+    <div class="row" data-pin-url="${esc(p.webUrl)}">
+      <div class="rdesc">
+        <span class="badge issue">ISSUE</span>
+        <a href="${esc(p.webUrl)}" class="pin-detail-link" data-pin-url="${esc(p.webUrl)}" data-pin-iid="${esc(p.iid)}" data-pin-proj="${esc(p.projectPath)}" target="_blank" rel="noopener">#${p.iid}: ${esc(p.title)}</a>
+      </div>
+      <div class="row-actions">
+        <button class="pin-log-btn" data-pin-url="${esc(p.webUrl)}">+ Log time</button>
+        <button class="pin-btn pinned" data-unpin="${esc(p.webUrl)}">Unpin</button>
+      </div>
+      <div class="rproj">${esc(p.projectPath)}</div>
+    </div>`).join("");
+  wrap.hidden = false;
+}
+
+// Update all pin buttons on the page to reflect current pin state
+function refreshPinButtons() {
+  document.querySelectorAll(".pin-btn[data-pin-url]").forEach(btn => {
+    const pinned = isPinned(btn.dataset.pinUrl);
+    btn.textContent = pinned ? "Pinned" : "Pin";
+    btn.classList.toggle("pinned", pinned);
+  });
+}
+
+// Event delegation for pin/unpin clicks anywhere on the page
+document.addEventListener("click", e => {
+  const btn = e.target.closest(".pin-btn");
+  if (!btn) return;
+  if (btn.dataset.unpin) {
+    unpinIssue(btn.dataset.unpin);
+  } else if (btn.dataset.pinUrl) {
+    const { pinUrl, pinIid, pinTitle, pinProj } = btn.dataset;
+    if (isPinned(pinUrl)) unpinIssue(pinUrl);
+    else pinIssue({ webUrl: pinUrl, iid: pinIid, title: pinTitle, projectPath: pinProj });
+  }
+});
+
+// "Log time" button on a pinned issue — fetch the full issue and append to the log time card
+document.addEventListener("click", async e => {
+  const btn = e.target.closest(".pin-log-btn");
+  if (!btn) return;
+  const webUrl = btn.dataset.pinUrl;
+  const pin = loadPins().find(p => p.webUrl === webUrl);
+  if (!pin) return;
+
+  // Already in the list?
+  if (logTimeItems.some(it => it.issue?.web_url === webUrl)) {
+    $("logTimeCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "…";
+  try {
+    const { token, apiBase } = getConfig();
+    // Derive project path from the web URL to look up the issue
+    const projectPath = projectPathFromWebUrl(webUrl) || pin.projectPath;
+    const res = await fetch(
+      `${apiBase}/api/v4/projects/${encodeURIComponent(projectPath)}/issues/${pin.iid}`,
+      { headers: { "Authorization": `Bearer ${token}` } }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const issue = await res.json();
+    logTimeItems = [...logTimeItems, { issue, projectPath: pin.projectPath }];
+    renderLogTime(logTimeItems);
+    $("logTimeCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = "+ Log time";
+    console.error("pin log time fetch failed", err);
+  }
+});
+
+// ══════════════════════════════════════════
+// UNLOGGED ISSUE DETECTION
+// ══════════════════════════════════════════
+
+// GitLab generates branch names like "123-issue-title" or "feature/123-issue-title".
+// Extract the leading IID from the last path segment.
+function extractIidFromBranch(ref) {
+  const segment = ref.split("/").pop();
+  const m = segment.match(/^(\d+)[-_]/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+async function fetchMR(apiBase, token, projectId, mrIid, signal) {
+  const res = await fetch(
+    `${apiBase}/api/v4/projects/${projectId}/merge_requests/${mrIid}`,
+    { headers: { "Authorization": `Bearer ${token}` }, signal }
+  );
+  if (!res.ok) return null;
+  return res.json();
+}
+
+async function fetchIssue(apiBase, token, projectId, iid, signal) {
+  // projectId may be a numeric ID (always available from event.project_id)
+  const res = await fetch(
+    `${apiBase}/api/v4/projects/${projectId}/issues/${iid}`,
+    { headers: { "Authorization": `Bearer ${token}` }, signal }
+  );
+  if (res.status === 404) return null; // not a real issue branch
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function projectPathFromWebUrl(webUrl) {
+  // https://gitlab.com/group/sub/project/-/issues/35 → "group/sub/project"
+  const m = webUrl.match(/\/(.+?)\/-\/issues\//);
+  return m ? m[1] : null;
+}
+
+async function findUnloggedIssues(tlNodes, events, apiBase, token, signal, currentUsername) {
+  // Normalise a URL for comparison: lowercase, strip trailing slash
+  const normUrl = u => (u || "").toLowerCase().replace(/\/+$/, "");
+
+  // Issues with a timelog today — compared by web URL (avoids path-parsing mismatches)
+  const loggedIssueUrls = new Set(
+    tlNodes.filter(n => n.issue).map(n => normUrl(n.issue.webUrl))
+  );
+
+  // MRs with a timelog today — keyed as "projectPath:mrIid"
+  const loggedMRKeys = new Set(
+    tlNodes.filter(n => n.mergeRequest)
+      .map(n => `${(n.project.fullPath || "").toLowerCase()}:${n.mergeRequest.iid}`)
+  );
+
+  // candidates: "projectId:issueIid" → { projectId, iid, branches, pushedBranches, mrs, notes, selfAuthoredMR }
+  const candidates = new Map();
+  function addCandidate(projectId, iid, { branch, fromPush, mr, mrBySelf, note } = {}) {
+    const key = `${projectId}:${iid}`;
+    if (!candidates.has(key)) candidates.set(key, { projectId, iid, branches: new Set(), pushedBranches: new Set(), mrs: new Set(), notes: new Set(), selfAuthoredMR: false });
+    const c = candidates.get(key);
+    if (branch)            c.branches.add(branch);
+    if (branch && fromPush) c.pushedBranches.add(branch);
+    if (mr)                c.mrs.add(mr);
+    if (mrBySelf)          c.selfAuthoredMR = true;
+    if (note)              c.notes.add(note);
+  }
+
+  // 1. Push events → extract issue IID from branch name; mark branch as user-pushed.
+  //    Skip "removed" events (branch deletion from merge) — those are not authorship signals.
+  const pushedBranchKeys = new Set();
+  for (const e of events) {
+    if (!e.push_data?.ref || !e.project_id) continue;
+    if (e.push_data.action === "removed") continue;
+    pushedBranchKeys.add(`${e.project_id}:${e.push_data.ref}`);
+    const iid = extractIidFromBranch(e.push_data.ref);
+    if (iid) addCandidate(e.project_id, iid, { branch: e.push_data.ref, fromPush: true });
+  }
+
+  // 2. MR events → fetch MR, extract issue IID from source branch
+  const mrPairs = new Map();
+  for (const e of events) {
+    if (e.target_type === "MergeRequest" && e.target_iid && e.project_id)
+      mrPairs.set(`${e.project_id}:${e.target_iid}`, { projectId: e.project_id, mrIid: e.target_iid });
+  }
+  const unresolvedMRs = [];
+  if (mrPairs.size) {
+    const mrs = await Promise.all(
+      [...mrPairs.values()].map(({ projectId, mrIid }) => fetchMR(apiBase, token, projectId, mrIid, signal))
+    );
+    for (const mr of mrs) {
+      if (!mr?.source_branch) continue;
+      const mrBySelf = currentUsername && mr.author?.username === currentUsername;
+      const iid = extractIidFromBranch(mr.source_branch);
+      if (iid) addCandidate(mr.project_id, iid, { branch: mr.source_branch, mr: mr.iid, mrBySelf });
+      else unresolvedMRs.push(mr);
+    }
+  }
+
+  // 3. Note events on issues → the commented-on issue is a candidate
+  for (const e of events) {
+    if ((e.target_type === "Note" || e.target_type === "DiscussionNote") &&
+        e.note?.noteable_type === "Issue" && e.note?.noteable_iid && e.project_id) {
+      addCandidate(e.project_id, e.note.noteable_iid, { note: `comment on #${e.note.noteable_iid}` });
+    }
+  }
+
+  // 4. Direct issue events (opened, closed, reopened, etc.)
+  for (const e of events) {
+    if ((e.target_type === "Issue" || e.target_type === "WorkItem") && e.target_iid && e.project_id) {
+      addCandidate(e.project_id, e.target_iid);
+    }
+  }
+
+  if (!candidates.size && !unresolvedMRs.length) return [];
+
+  // Fetch issue details; filter out already-logged ones
+  const results = await Promise.all(
+    [...candidates.values()].map(async ({ projectId, iid, branches, pushedBranches, mrs, notes, selfAuthoredMR }) => {
+      const issue = await fetchIssue(apiBase, token, projectId, iid, signal);
+      if (!issue) return null;
+
+      // Already has a direct issue timelog?
+      if (loggedIssueUrls.has(normUrl(issue.web_url))) return null;
+
+      // Already has a timelog on one of the linked MRs?
+      const projectPath = projectPathFromWebUrl(issue.web_url || "") || String(projectId);
+      const mrLogged = [...mrs].some(mrIid =>
+        loggedMRKeys.has(`${projectPath.toLowerCase()}:${mrIid}`)
+      );
+      if (mrLogged) return null;
+
+      // Review-only: linked via MR(s) where the user is not the MR author.
+      // Pushes to the branch (e.g. rebase) don't count as authorship if the MR isn't theirs.
+      const reviewOnly = mrs.size > 0 && !selfAuthoredMR;
+
+      return { issue, projectPath, reviewOnly, branches: [...branches].sort(), mrs: [...mrs].sort((a, b) => a - b), notes: [...notes] };
+    })
+  );
+
+  const issueItems = results.filter(Boolean).sort((a, b) => a.issue.iid - b.issue.iid);
+
+  // MRs that had no detectable issue IID — suggest logging time directly on the MR
+  const mrItems = unresolvedMRs
+    .filter(mr => mr?.web_url)
+    .filter(mr => {
+      const projectPath = (mr.web_url.match(/\/(.+?)\/-\/merge_requests\//) || [])[1] || "";
+      return !loggedMRKeys.has(`${projectPath.toLowerCase()}:${mr.iid}`);
+    })
+    .map(mr => {
+      const projectPath = (mr.web_url.match(/\/(.+?)\/-\/merge_requests\//) || [])[1] || String(mr.project_id);
+      const reviewOnly = !pushedBranchKeys.has(`${mr.project_id}:${mr.source_branch}`);
+      return { mr, projectPath, reviewOnly };
+    });
+
+  return [...issueItems, ...mrItems];
+}
+
+function renderUnlogged(items) {
+  _unloggedItems = items;
+  const wrap = $("unloggedWrap");
+  if (!items.length) { wrap.hidden = true; return; }
+
+  $("unloggedCount").textContent = items.length;
+  $("unloggedList").innerHTML = items.map((item, i) => {
+    if (item.mr) {
+      const { mr, projectPath } = item;
+      const stateLabel = mr.state !== "opened"
+        ? ` <span style="color:var(--muted);font-size:11px">(${esc(mr.state)})</span>` : "";
+      return `
+        <div class="row">
+          <div class="rdesc">
+            <span class="badge mr">MR</span>
+            <a href="${esc(mr.web_url)}" class="detail-link" data-src="unlogged" data-idx="${i}" target="_blank" rel="noopener">!${mr.iid}: ${esc(mr.title)}</a>${stateLabel}
+            <span class="unlogged-via">via MR event</span>
+          </div>
+          <div class="row-actions"></div>
+          <div class="rproj">${esc(projectPath)}</div>
+        </div>`;
+    }
+    const { issue, projectPath, branches, mrs, notes = [] } = item;
+    const viaParts = [
+      ...branches.map(b => `<code>${esc(b)}</code>`),
+      ...mrs.map(n => `MR <strong>!${n}</strong>`),
+      ...notes.map(n => `<em>${esc(n)}</em>`),
+    ];
+    const stateLabel = issue.state === "closed"
+      ? ` <span style="color:var(--muted);font-size:11px">(closed)</span>` : "";
+    const pinned = isPinned(issue.web_url);
+    return `
+      <div class="row">
+        <div class="rdesc">
+          <span class="badge issue">ISSUE</span>
+          <a href="${esc(issue.web_url)}" class="detail-link" data-src="unlogged" data-idx="${i}" target="_blank" rel="noopener">#${issue.iid}: ${esc(issue.title)}</a>${stateLabel}
+          <span class="unlogged-via">via ${viaParts.join(", ")}</span>
+        </div>
+        <div class="row-actions">
+          <button class="pin-btn${pinned?" pinned":""}"
+            data-pin-url="${esc(issue.web_url)}"
+            data-pin-iid="${issue.iid}"
+            data-pin-title="${esc(issue.title)}"
+            data-pin-proj="${esc(projectPath)}"
+          >${pinned?"Pinned":"Pin"}</button>
+        </div>
+        <div class="rproj">${esc(projectPath)}</div>
+      </div>`;
+  }).join("");
+
+  wrap.hidden = false;
+}
+
+// ══════════════════════════════════════════
+// DAY TYPES  (sick / vacation)
+// ══════════════════════════════════════════
+
+function getDayTypes() {
+  try { return JSON.parse(localStorage.getItem("glt_day_types") || "{}"); } catch { return {}; }
+}
+function getDayType(date) { return getDayTypes()[date] || null; }
+function setDayType(date, type) {
+  const t = getDayTypes();
+  if (type) t[date] = type; else delete t[date];
+  localStorage.setItem("glt_day_types", JSON.stringify(t));
+}
+
+const DAY_TYPE_LABELS = {
+  sick:     "Sick day",
+  vacation: "Vacation day",
+};
+
+function renderDayBanner(date) {
+  const type = getDayType(date);
+  const banner = $("dayBanner");
+  $("sickBtn").className     = `day-type-btn${type === "sick"     ? " active-sick"     : ""}`;
+  $("vacationBtn").className = `day-type-btn${type === "vacation" ? " active-vacation" : ""}`;
+  if (!type) { banner.hidden = true; banner.className = ""; return; }
+  banner.className = `day-banner ${type}`;
+  banner.hidden = false;
+  banner.innerHTML = `
+    <span>${DAY_TYPE_LABELS[type]} — no time logging required</span>
+    <button class="clear-btn" id="clearDayType">Clear</button>`;
+  $("clearDayType").addEventListener("click", () => {
+    setDayType(date, null);
+    renderDayBanner(date);
+  });
+}
+
+function toggleDayType(type) {
+  const date = $("dateInput").value;
+  setDayType(date, getDayType(date) === type ? null : type);
+  renderDayBanner(date);
+}
+
+$("sickBtn").addEventListener("click",     () => toggleDayType("sick"));
+$("vacationBtn").addEventListener("click", () => toggleDayType("vacation"));
+
+// ══════════════════════════════════════════
+// LOG TIME CARD
+// ══════════════════════════════════════════
+
+const TIMELOG_DELETE = `
+mutation DeleteTimelog($id: TimelogID!) {
+  timelogDelete(input: { id: $id }) {
+    timelog { id }
+    errors
+  }
+}`;
+
+const TIMELOG_CREATE = `
+mutation CreateTimelog($issuableId: IssuableID!, $timeSpent: String!, $spentAt: Time, $summary: String!) {
+  timelogCreate(input: {
+    issuableId: $issuableId
+    timeSpent: $timeSpent
+    spentAt: $spentAt
+    summary: $summary
+  }) {
+    timelog { id }
+    errors
+  }
+}`;
+
+function hoursToDuration(hours) {
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+const WORKDAY   = 8;
+const LT_COLORS = ['#fc6d26','#6e49cb','#74bbf8','#4fd28a','#f5c842','#f783ac','#20c997','#ff6b6b'];
+let logTimeItems = [];
+
+function ltHoursInputs()   { return [...$("logTimeRows").querySelectorAll(".logtime-hours")]; }
+function ltSummaryInputs() { return [...$("logTimeRows").querySelectorAll(".logtime-summary")]; }
+
+function updateAllocation() {
+  const hours = ltHoursInputs().map(el => Math.max(0, parseFloat(el.value) || 0));
+  const total  = hours.reduce((a, b) => a + b, 0);
+  const over   = total > WORKDAY;
+
+  // Header + footer totals
+  const label = `${fmtDuration(total * 3600)} / ${WORKDAY}h`;
+  const cls   = `lt-total${over ? " over" : ""}`;
+  const totalEl = $("ltTotal");
+  totalEl.textContent = label;
+  totalEl.className = cls;
+  const footerEl = $("ltTotalFooter");
+  footerEl.textContent = label;
+  footerEl.className = cls;
+
+  // Allocation bar
+  let segs = logTimeItems.map((_, i) => {
+    if (!hours[i]) return "";
+    const pct = Math.min(hours[i] / WORKDAY * 100, 100);
+    return `<div class="lt-bar-seg" style="width:${pct}%;background:${LT_COLORS[i % LT_COLORS.length]}"></div>`;
+  }).join("");
+  if (over) {
+    const overpct = Math.min((total - WORKDAY) / WORKDAY * 100, 100);
+    segs += `<div class="lt-bar-seg lt-bar-over" style="width:${overpct}%"></div>`;
+  } else {
+    segs += `<div class="lt-bar-rem"></div>`;
+  }
+  $("ltBar").innerHTML = segs;
+
+  // Per-row: color the input border and update percentage
+  ltHoursInputs().forEach((el, i) => {
+    const hasVal = hours[i] > 0;
+    el.classList.toggle("has-value", hasVal);
+    el.style.borderColor = hasVal ? LT_COLORS[i % LT_COLORS.length] : "";
+    el.style.color       = hasVal ? LT_COLORS[i % LT_COLORS.length] : "";
+    const pctEl = $(`ltPct-${i}`);
+    if (pctEl) pctEl.textContent = total > 0 ? `${Math.round(hours[i] / WORKDAY * 100)}%` : "—";
+  });
+}
+
+function renderLogTime(items) {
+  logTimeItems = items;
+  const card = $("logTimeCard");
+  if (!items.length) { card.hidden = true; return; }
+
+  $("logTimeDate").textContent = $("dateInput").value;
+  $("logTimeStatus").textContent = "";
+  $("logTimeStatus").className = "logtime-status";
+  $("logTimeSubmit").disabled = false;
+
+  $("logTimeRows").innerHTML = items.map((item, i) => {
+    const color      = LT_COLORS[i % LT_COLORS.length];
+    const isMR       = !!item.mr;
+    const reviewOnly = !!item.reviewOnly;
+    const ref        = isMR ? `!${item.mr.iid}` : `#${item.issue.iid}`;
+    const title      = isMR ? item.mr.title : item.issue.title;
+    const url        = isMR ? item.mr.web_url : item.issue.web_url;
+    const badgeLabel = reviewOnly ? "REVIEW" : isMR ? "MR" : "ISSUE";
+    const badgeCls   = reviewOnly ? "review" : isMR ? "mr" : "issue";
+    return `
+      <div class="logtime-row"${reviewOnly ? ' data-review-only="1"' : ''}>
+        <div class="lt-row-title">
+          <div class="lt-dot" style="background:${color}"></div>
+          <span class="badge ${badgeCls}" style="font-size:10px;padding:1px 5px">${badgeLabel}</span>
+          <a href="${esc(url)}" class="detail-link" data-src="logtime" data-idx="${i}" target="_blank" rel="noopener">${esc(ref)}: ${esc(title)}</a>
+          ${reviewOnly ? `<span class="lt-review-hint">Review only — no pushes detected</span>` : ""}
+        </div>
+        <div class="lt-row-controls">
+          <input class="logtime-summary" type="text" placeholder="Summary (optional)" autocomplete="off">
+          <div class="lt-controls">
+            <button class="lt-adj" data-delta="-0.5">−</button>
+            <input class="logtime-hours" type="text" inputmode="decimal" placeholder="0">
+            <button class="lt-adj" data-delta="0.5">+</button>
+            <span class="lt-unit">h</span>
+            <span class="lt-pct" id="ltPct-${i}">—</span>
+          </div>
+          <span class="row-result" id="rowResult-${i}"></span>
+        </div>
+      </div>`;
+  }).join("");
+
+  const single = items.length === 1;
+  $("ltDistribute").hidden = single;
+  if (single) ltHoursInputs()[0].value = WORKDAY;
+
+  updateAllocation();
+  card.hidden = false;
+}
+
+// Registered once — not inside renderLogTime to avoid duplicate listeners on re-render
+$("logTimeRows").addEventListener("input", e => {
+  if (e.target.classList.contains("logtime-hours")) updateAllocation();
+});
+$("logTimeRows").addEventListener("click", e => {
+  const btn = e.target.closest(".lt-adj");
+  if (!btn) return;
+  const allInputs   = ltHoursInputs();
+  const rows        = [...$("logTimeRows").querySelectorAll(".logtime-row")];
+  const idx         = rows.indexOf(btn.closest(".logtime-row"));
+  const input       = allInputs[idx];
+  const delta       = parseFloat(btn.dataset.delta);
+  const cur         = parseFloat(input.value) || 0;
+  const totalBefore = allInputs.reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+
+  const newVal = Math.max(0, Math.round((cur + delta) * 4) / 4);
+  input.value  = newVal;
+
+  // When reducing from a fully-allocated workday, give freed hours to the next issue
+  const freed = Math.round((cur - newVal) * 100) / 100;
+  if (freed > 0 && Math.abs(totalBefore - WORKDAY) < 0.01) {
+    const n = allInputs.length;
+    for (let offset = 1; offset < n; offset++) {
+      const other = allInputs[(idx + offset) % n];
+      other.value = Math.round(((parseFloat(other.value) || 0) + freed) * 4) / 4;
+      break;
+    }
+  }
+
+  updateAllocation();
+});
+
+$("ltDistribute").addEventListener("click", () => {
+  const rows = [...$("logTimeRows").querySelectorAll(".logtime-row")];
+  if (!rows.length) return;
+
+  const REVIEW_CAP = 0.5;
+  const reviewRows  = rows.filter(r => r.dataset.reviewOnly);
+  const normalRows  = rows.filter(r => !r.dataset.reviewOnly);
+
+  // Fix review-only rows at 0.5h each
+  reviewRows.forEach(r => { r.querySelector(".logtime-hours").value = REVIEW_CAP; });
+
+  // Distribute remaining budget among normal rows (whole numbers)
+  const remaining = Math.max(0, WORKDAY - reviewRows.length * REVIEW_CAP);
+  const n = normalRows.length;
+  if (n) {
+    const base  = Math.floor(remaining / n);
+    const extra = remaining - base * n;
+    normalRows.forEach((r, i) => { r.querySelector(".logtime-hours").value = base + (i < extra ? 1 : 0); });
+  }
+
+  updateAllocation();
+});
+
+async function submitTimeLogs() {
+  const { token, apiBase } = getConfig();
+  const spentAt = new Date(`${$("dateInput").value}T12:00:00`).toISOString();
+
+  const hourInputs    = ltHoursInputs();
+  const summaryInputs = ltSummaryInputs();
+  const toSubmit = logTimeItems.map((item, i) => ({
+    item, i,
+    hours:   parseFloat(hourInputs[i]?.value   || "0"),
+    summary: summaryInputs[i]?.value.trim()    || "",
+  })).filter(e => e.hours > 0);
+
+  if (!toSubmit.length) {
+    $("logTimeStatus").textContent = "Fill in at least one hour value.";
+    $("logTimeStatus").className = "logtime-status err";
+    return;
+  }
+
+  $("logTimeSubmit").disabled = true;
+  $("logTimeStatus").textContent = `Submitting ${toSubmit.length} entr${toSubmit.length > 1 ? "ies" : "y"}…`;
+  $("logTimeStatus").className = "logtime-status";
+
+  logTimeItems.forEach((_, i) => {
+    const el = $(`rowResult-${i}`);
+    if (el) { el.className = "row-result"; el.textContent = ""; }
+  });
+
+  let okCount = 0, errCount = 0;
+  await Promise.all(toSubmit.map(async ({ item, i, hours, summary }) => {
+    const resultEl   = $(`rowResult-${i}`);
+    const timeSpent  = hoursToDuration(hours);
+    const issuableId = item.mr
+      ? `gid://gitlab/MergeRequest/${item.mr.id}`
+      : `gid://gitlab/Issue/${item.issue.id}`;
+    try {
+      const res = await fetch(`${apiBase}/api/graphql`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ query: TIMELOG_CREATE, variables: { issuableId, timeSpent, spentAt, summary } }),
+      });
+      const json = await res.json();
+      const errors = json?.data?.timelogCreate?.errors;
+      if (!res.ok || errors?.length) throw new Error((errors || [json.message]).join(", "));
+      if (resultEl) { resultEl.className = "row-result ok"; resultEl.textContent = "Saved"; }
+      okCount++;
+    } catch (err) {
+      if (resultEl) { resultEl.className = "row-result err"; resultEl.textContent = "Failed"; }
+      console.error("timelog error", err);
+      errCount++;
+    }
+  }));
+
+  if (errCount === 0) {
+    $("logTimeStatus").textContent = `${okCount} entr${okCount > 1 ? "ies" : "y"} saved.`;
+    $("logTimeStatus").className = "logtime-status ok";
+    setTimeout(load, 800);
+  } else {
+    $("logTimeStatus").textContent = `${okCount} saved, ${errCount} failed.`;
+    $("logTimeStatus").className = "logtime-status err";
+    $("logTimeSubmit").disabled = false;
+  }
+}
+
+$("logTimeSubmit").addEventListener("click", submitTimeLogs);
+
+$("timelogResults").addEventListener("click", e => {
+  // Collapse/expand group
+  const head = e.target.closest(".group-head");
+  if (head && !e.target.closest("a, button")) {
+    head.closest(".group").classList.toggle("open");
+    return;
+  }
+
+  // Delete timelog entry
+  const btn = e.target.closest(".rdel-btn");
+  if (!btn) return;
+  const id = btn.dataset.timelogId;
+  if (!id) return;
+
+  btn.disabled = true;
+  btn.textContent = "…";
+  const { token, apiBase } = getConfig();
+  fetch(`${apiBase}/api/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+    body: JSON.stringify({ query: TIMELOG_DELETE, variables: { id } }),
+  })
+    .then(r => r.json())
+    .then(json => {
+      const errors = json?.data?.timelogDelete?.errors;
+      if (errors?.length) throw new Error(errors.join(", "));
+      btn.closest(".row").remove();
+      // If no entries left, remove the card entirely and reload stats
+      load();
+    })
+    .catch(err => {
+      btn.disabled = false;
+      btn.textContent = "Remove";
+      console.error("timelog delete failed", err);
+    });
+});
+
+// ── Load ──
+let _loadController = null;
+
+async function load() {
+  // Abort any in-flight load so stale responses never overwrite fresh ones
+  if (_loadController) _loadController.abort();
+  _loadController = new AbortController();
+  const signal = _loadController.signal;
+
+  if (!$("calendarWrap").hidden) loadCalendar();
+
+  const { token, username, apiBase } = getConfig();
+  const isoDate = $("dateInput").value;
+  if (!isoDate) return;
+
+  renderPinned();
+  $("timelogResults").innerHTML = `<div class="state"><div class="spinner"></div>Loading…</div>`;
+  $("activityResults").innerHTML = `<div class="state"><div class="spinner"></div>Loading…</div>`;
+  $("unloggedWrap").hidden = true;
+  $("logTimeCard").hidden = true;
+  ["statTotal","statEntries","statItems","statEvents"].forEach(id => $(id).textContent = "…");
+
+  const { startTime, endTime } = dayBounds(isoDate);
+
+  try {
+    // Resolve user ID and fetch timelogs in parallel
+    const [userId, tlNodes] = await Promise.all([
+      resolveUserId(apiBase, token, username, signal),
+      fetchTimelogs(apiBase, token, username, startTime, endTime, signal),
+    ]);
+    renderTimelogs(tlNodes);
+
+    // Events need the user ID; resolve project paths in parallel with the event fetch
+    const events = await fetchEvents(apiBase, token, userId, isoDate, signal);
+    const projectPaths = await resolveProjectPaths(events, apiBase, token, signal);
+    renderActivity(events, apiBase, projectPaths);
+
+    // Find issues worked on (via branch names) that have no time logged yet
+    const unlogged = await findUnloggedIssues(tlNodes, events, apiBase, token, signal, username);
+    renderUnlogged(unlogged);
+    renderLogTime(unlogged);
+  } catch (err) {
+    if (err.name === "AbortError") return; // superseded by a newer load — silently discard
+    ["statTotal","statEntries","statItems","statEvents"].forEach(id => $(id).textContent = "—");
+    const msg = `<div class="state err-text"><div class="big">Failed to load.</div>${esc(err.message)}</div>`;
+    $("timelogResults").innerHTML = msg;
+    $("activityResults").innerHTML = msg;
+  }
+}
+
+// ── Calendar ──
+let _calController = null;
+let _calYear  = new Date().getFullYear();
+let _calMonth = new Date().getMonth();
+
+async function loadCalendar() {
+  if (_calController) _calController.abort();
+  _calController = new AbortController();
+  const signal = _calController.signal;
+
+  const { token, username, apiBase } = getConfig();
+  const year  = _calYear;
+  const month = _calMonth;
+
+  const MONTHS_LONG = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  $("calTitle").textContent = `${MONTHS_LONG[month]} ${year}`;
+
+  $("calGrid").innerHTML = `<div class="cal-loading"><div class="spinner" style="display:inline-block;vertical-align:middle;margin:0 8px 0 0"></div>Loading…</div>`;
+
+  const startTime = new Date(year, month, 1, 0, 0, 0).toISOString();
+  const endTime   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+
+  try {
+    const [userId, nodes] = await Promise.all([
+      resolveUserId(apiBase, token, username, signal),
+      fetchTimelogs(apiBase, token, username, startTime, endTime, signal),
+    ]);
+    renderCalendar(nodes, year, month);
+  } catch (err) {
+    if (err.name === "AbortError") return;
+    $("calGrid").innerHTML = `<div class="cal-loading" style="color:#ff8d7a">Failed to load: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderCalendar(nodes, year, month) {
+  const dayTypes  = getDayTypes();
+  const today     = toISODate(new Date());
+  const selectedDate = $("dateInput").value;
+
+  // Sum hours per local date
+  const hoursPerDay = new Map();
+  for (const n of nodes) {
+    const d = toISODate(new Date(n.spentAt));
+    hoursPerDay.set(d, (hoursPerDay.get(d) || 0) + n.timeSpent / 3600);
+  }
+
+  const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const firstDow    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  let html = DOW.map((d, i) =>
+    `<div class="cal-dow${i===0||i===6?" weekend":""}">${d}</div>`
+  ).join("");
+
+  // Empty cells before first day
+  for (let i = 0; i < firstDow; i++)
+    html += `<div class="cal-cell empty"></div>`;
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso     = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const dow     = new Date(year, month, d).getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    const isFuture  = iso > today;
+    const isToday   = iso === today;
+    const isSelected = iso === selectedDate;
+    const dayType   = dayTypes[iso] || null;
+    const hours     = hoursPerDay.get(iso) || 0;
+
+    let bg = "";
+    let barColor = "";
+    let barWidth = 0;
+    if (dayType === "sick")     { bg = "rgba(255,141,122,.15)"; }
+    else if (dayType === "vacation") { bg = "rgba(116,187,248,.15)"; }
+    else if (!isWeekend && !isFuture) {
+      if (hours >= 8)      { bg = "rgba(79,210,138,.18)";   barColor = "#4fd28a"; }
+      else if (hours >= 4) { bg = "rgba(252,109,38,.18)";   barColor = "#fc6d26"; }
+      else if (hours > 0)  { bg = "rgba(252,109,38,.10)";   barColor = "#fc6d26"; }
+      else                 { bg = "rgba(255,107,85,.09)"; }
+      barWidth = Math.min(hours / 8 * 100, 100);
+    }
+
+    const cls = [
+      "cal-cell",
+      isWeekend  ? "weekend"   : "",
+      isFuture   ? "future"    : "",
+      dayType    ? "day-off"   : "",
+      isToday    ? "is-today"  : "",
+      isSelected ? "is-selected" : "",
+    ].filter(Boolean).join(" ");
+
+    const hoursHtml = hours > 0
+      ? `<div class="cal-hours">${fmtDuration(hours * 3600)}</div>`
+      : (!isWeekend && !isFuture && !dayType ? `<div class="cal-hours" style="opacity:.25">—</div>` : "");
+
+    const typeTag = dayType
+      ? `<div class="cal-type-tag">${dayType === "sick" ? "🤒 Sick" : "🌴 Vacation"}</div>` : "";
+
+    const barHtml = barWidth > 0
+      ? `<div class="cal-bar"><div class="cal-bar-fill" style="width:${barWidth}%;background:${barColor}"></div></div>` : "";
+
+    html += `<div class="${cls}" style="background:${bg}" data-cal-date="${iso}">
+      <div class="cal-num">${d}</div>
+      ${hoursHtml}${typeTag}${barHtml}
+    </div>`;
+  }
+
+  $("calGrid").innerHTML = html;
+
+  // Click a day to navigate there
+  $("calGrid").querySelectorAll(".cal-cell[data-cal-date]").forEach(cell => {
+    const iso = cell.dataset.calDate;
+    const dow = new Date(iso).getDay();
+    if (dow === 0 || dow === 6 || iso > today || dayTypes[iso]) return;
+    cell.addEventListener("click", () => {
+      $("calGrid").querySelectorAll(".is-selected").forEach(c => c.classList.remove("is-selected"));
+      cell.classList.add("is-selected");
+      $("dateInput").value = iso;
+      localStorage.setItem(LS.date, iso);
+      renderDayBanner(iso);
+      DP.updateTrigger();
+      load();
+    });
+  });
+}
+
+$("calToggleBtn").addEventListener("click", () => {
+  const wrap = $("calendarWrap");
+  const opening = wrap.hidden;
+  wrap.hidden = !opening;
+  $("calToggleBtn").classList.toggle("active", opening);
+  if (opening) {
+    const d = new Date($("dateInput").value + "T12:00:00");
+    _calYear  = d.getFullYear();
+    _calMonth = d.getMonth();
+    loadCalendar();
+  }
+});
+$("calPrev").addEventListener("click", () => {
+  if (--_calMonth < 0) { _calMonth = 11; _calYear--; }
+  loadCalendar();
+});
+$("calNext").addEventListener("click", () => {
+  if (++_calMonth > 11) { _calMonth = 0; _calYear++; }
+  loadCalendar();
+});
+
+// ── Date picker ──
+const DP = (() => {
+  const MONTHS   = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const MONTHS_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DAYS_S   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+  let view = 'days';
+  let cursor = new Date();   // month being browsed
+  let yearBase = 2020;       // first year shown in year grid
+
+  function getSelected() {
+    const v = $("dateInput").value;
+    return v ? new Date(`${v}T12:00:00`) : new Date();
+  }
+
+  function updateTrigger() {
+    const d  = getSelected();
+    const wd = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()];
+    $("dpTrigger").textContent = `${wd}, ${d.getDate()} ${MONTHS_S[d.getMonth()]} ${d.getFullYear()} ▾`;
+  }
+
+  function isOpen() { return !$("dpDropdown").hidden; }
+
+  function open() {
+    const sel = getSelected();
+    cursor    = new Date(sel.getFullYear(), sel.getMonth(), 1);
+    yearBase  = Math.floor(sel.getFullYear() / 12) * 12;
+    view      = 'days';
+    render();
+    $("dpDropdown").hidden = false;
+  }
+
+  function close() { $("dpDropdown").hidden = true; }
+
+  function pickDate(d) {
+    $("dateInput").value = toISODate(d);
+    localStorage.setItem(LS.date, $("dateInput").value);
+    renderDayBanner($("dateInput").value);
+    updateTrigger();
+    close();
+    load();
+  }
+
+  function render() {
+    if (view === 'days')   renderDays();
+    if (view === 'months') renderMonths();
+    if (view === 'years')  renderYears();
+  }
+
+  function renderDays() {
+    const sel     = getSelected();
+    const today   = toISODate(new Date());
+    const year    = cursor.getFullYear();
+    const month   = cursor.getMonth();
+
+    $("dpTitle").textContent = `${MONTHS[month]} ${year}`;
+
+    const firstDow   = new Date(year, month, 1).getDay();
+    const daysInMon  = new Date(year, month + 1, 0).getDate();
+    const daysInPrev = new Date(year, month, 0).getDate();
+
+    const cells = [];
+    for (let i = firstDow - 1; i >= 0; i--)
+      cells.push({ date: new Date(year, month - 1, daysInPrev - i), other: true });
+    for (let d = 1; d <= daysInMon; d++)
+      cells.push({ date: new Date(year, month, d), other: false });
+    while (cells.length < 42)
+      cells.push({ date: new Date(year, month + 1, cells.length - firstDow - daysInMon + 1), other: true });
+
+    const selIso = toISODate(sel);
+    const weekHtml = DAYS_S.map(d => `<div class="dp-weekday">${d}</div>`).join('');
+    const dayHtml  = cells.map(({ date, other }) => {
+      const iso = toISODate(date);
+      const cls = ['dp-day', other ? 'dp-other' : '', iso === selIso ? 'dp-sel' : '', iso === today ? 'dp-today' : ''].filter(Boolean).join(' ');
+      return `<button class="${cls}" data-iso="${iso}">${date.getDate()}</button>`;
+    }).join('');
+
+    $("dpBody").innerHTML = `<div class="dp-weekdays">${weekHtml}</div><div class="dp-days">${dayHtml}</div>`;
+    $("dpBody").querySelectorAll('.dp-day').forEach(btn =>
+      btn.addEventListener('click', () => pickDate(new Date(`${btn.dataset.iso}T12:00:00`))));
+  }
+
+  function renderMonths() {
+    const sel  = getSelected();
+    const now  = new Date();
+    $("dpTitle").textContent = cursor.getFullYear();
+
+    const html = MONTHS.map((m, i) => {
+      const isSel = i === sel.getMonth() && cursor.getFullYear() === sel.getFullYear();
+      const isCur = i === now.getMonth() && cursor.getFullYear() === now.getFullYear();
+      const cls = ['dp-cell', isSel ? 'dp-sel' : '', isCur ? 'dp-cur' : ''].filter(Boolean).join(' ');
+      return `<button class="${cls}" data-m="${i}">${MONTHS_S[i]}</button>`;
+    }).join('');
+
+    $("dpBody").innerHTML = `<div class="dp-grid">${html}</div>`;
+    $("dpBody").querySelectorAll('.dp-cell').forEach(btn =>
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        cursor = new Date(cursor.getFullYear(), parseInt(btn.dataset.m), 1);
+        view = 'days'; render();
+      }));
+  }
+
+  function renderYears() {
+    const selYear = getSelected().getFullYear();
+    const nowYear = new Date().getFullYear();
+    $("dpTitle").textContent = `${yearBase} – ${yearBase + 11}`;
+
+    const html = Array.from({ length: 12 }, (_, i) => {
+      const y   = yearBase + i;
+      const cls = ['dp-cell', y === selYear ? 'dp-sel' : '', y === nowYear ? 'dp-cur' : ''].filter(Boolean).join(' ');
+      return `<button class="${cls}" data-y="${y}">${y}</button>`;
+    }).join('');
+
+    $("dpBody").innerHTML = `<div class="dp-grid4">${html}</div>`;
+    $("dpBody").querySelectorAll('.dp-cell').forEach(btn =>
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        cursor = new Date(parseInt(btn.dataset.y), cursor.getMonth(), 1);
+        view = 'months'; render();
+      }));
+  }
+
+  function prev() {
+    if (view === 'days')   cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+    if (view === 'months') cursor = new Date(cursor.getFullYear() - 1, cursor.getMonth(), 1);
+    if (view === 'years')  yearBase -= 12;
+    render();
+  }
+
+  function next() {
+    if (view === 'days')   cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    if (view === 'months') cursor = new Date(cursor.getFullYear() + 1, cursor.getMonth(), 1);
+    if (view === 'years')  yearBase += 12;
+    render();
+  }
+
+  function titleClick() {
+    view = view === 'days' ? 'months' : view === 'months' ? 'years' : 'days';
+    render();
+  }
+
+  let inited = false;
+  function init() {
+    updateTrigger();
+    if (inited) return;
+    inited = true;
+    $("dpTrigger").addEventListener('click', e => { e.stopPropagation(); isOpen() ? close() : open(); });
+    $("dpPrev").addEventListener('click',    e => { e.stopPropagation(); prev(); });
+    $("dpNext").addEventListener('click',    e => { e.stopPropagation(); next(); });
+    $("dpTitle").addEventListener('click',   e => { e.stopPropagation(); titleClick(); });
+    document.addEventListener('click', e => { if (!$("datePicker").contains(e.target)) close(); });
+  }
+
+  return { init, updateTrigger };
+})();
+
+// ── Issue detail panel ──
+function mdToHtml(text) {
+  if (!text) return "<em style='color:var(--muted)'>No description.</em>";
+  // Escape HTML first, then apply lightweight markdown
+  const e = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  return e(text)
+    .replace(/^#{1,3} (.+)$/gm, "<strong>$1</strong>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/^[-*] (.+)$/gm, "• $1")
+    .replace(/\n{2,}/g, "\n\n");
+}
+
+function openDetailPanel(obj, type) {
+  const isMR = type === "mr";
+  const fmt  = iso => iso ? new Date(iso).toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" }) : "—";
+  const userLink = u => u ? `<a href="${esc(u.web_url)}" target="_blank" rel="noopener">${esc(u.name)}</a>` : "—";
+
+  $("ipBadge").textContent = isMR ? "MR" : "ISSUE";
+  $("ipBadge").className   = `badge ${isMR ? "mr" : "issue"}`;
+  $("ipRef").textContent   = isMR ? `!${obj.iid}` : `#${obj.iid}`;
+  $("ipTitle").textContent = obj.title;
+  $("ipOpenLink").href     = obj.web_url;
+
+  const assignees = (obj.assignees || (obj.assignee ? [obj.assignee] : [])).map(userLink).join(", ") || "—";
+
+  // Issues have label objects with .color; MRs have label strings
+  const labels = (obj.labels || []).map(l => {
+    if (typeof l === "string") return `<span class="ip-label-chip" style="background:#555;color:#fff">${esc(l)}</span>`;
+    const bg = l.color || "#555";
+    const fg = l.text_color || "#fff";
+    return `<span class="ip-label-chip" style="background:${esc(bg)};color:${esc(fg)}">${esc(l.name)}</span>`;
+  }).join("") || "—";
+
+  const stateColor = obj.state === "opened" ? "#4fd28a" : "#ff8d7a";
+  const rows = [
+    ["Author",   userLink(obj.author)],
+    ["Assigned", assignees],
+    ["State",    `<span style="color:${stateColor};font-weight:600">${esc(obj.state)}</span>`],
+    ["Created",  fmt(obj.created_at)],
+    ["Updated",  fmt(obj.updated_at)],
+    ["Labels",   labels],
+  ];
+  if (isMR) {
+    rows.push(["Branch", `<code>${esc(obj.source_branch)}</code> → <code>${esc(obj.target_branch)}</code>`]);
+  }
+  if (obj.milestone) rows.push(["Milestone", esc(obj.milestone.title)]);
+
+  $("ipMeta").innerHTML = rows.map(([k, v]) =>
+    `<div class="ip-meta-key">${k}</div><div class="ip-meta-val">${v}</div>`
+  ).join("");
+
+  $("ipDesc").innerHTML = mdToHtml(obj.description || "");
+  $("issuePanel").classList.add("open");
+}
+
+function closeIssuePanel() { $("issuePanel").classList.remove("open"); }
+
+$("ipClose").addEventListener("click", closeIssuePanel);
+$("ipOverlay").addEventListener("click", closeIssuePanel);
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeIssuePanel(); });
+
+// Event delegation: detail button on unlogged list and log time card
+function openDetailFromEl(el) {
+  const idx  = parseInt(el.dataset.idx, 10);
+  const src  = el.dataset.src;
+  const item = src === "unlogged" ? _unloggedItems[idx] : logTimeItems[idx];
+  if (!item) return;
+  if (item.mr) openDetailPanel(item.mr, "mr");
+  else if (item.issue) openDetailPanel(item.issue, "issue");
+}
+
+document.addEventListener("click", e => {
+  const btn = e.target.closest(".detail-btn");
+  if (btn) { openDetailFromEl(btn); return; }
+  const link = e.target.closest(".detail-link");
+  if (link && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    e.preventDefault();
+    openDetailFromEl(link);
+    return;
+  }
+  const pinLink = e.target.closest(".pin-detail-link");
+  if (pinLink && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    e.preventDefault();
+    const { pinUrl, pinIid, pinProj } = pinLink.dataset;
+    const { token, apiBase } = getConfig();
+    fetch(`${apiBase}/api/v4/projects/${encodeURIComponent(pinProj)}/issues/${pinIid}`,
+      { headers: { "Authorization": `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(issue => { if (issue) openDetailPanel(issue, "issue"); })
+      .catch(() => {});
+  }
+});
+
+let _unloggedItems = [];
+
+// ── Wiring ──
+$("prevDay").addEventListener("click", () => shiftDay(-1));
+$("nextDay").addEventListener("click", () => shiftDay(1));
+$("todayBtn").addEventListener("click", () => {
+  $("dateInput").value = toISODate(new Date());
+  localStorage.setItem(LS.date, $("dateInput").value);
+  renderDayBanner($("dateInput").value);
+  DP.updateTrigger();
+  load();
+});
+$("loadBtn").addEventListener("click", load);
+
+// ── Init ──
+$("dateInput").value = localStorage.getItem(LS.date) || toISODate(new Date());
+if (isConfigured()) { showMain(); renderPinned(); renderDayBanner($("dateInput").value); DP.init(); load(); }
+else { showSetup(); }
+</script>
+</body>
+</html>
