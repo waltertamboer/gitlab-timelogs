@@ -4,9 +4,36 @@ A single-file browser app for reviewing and logging time on GitLab issues and me
 
 ![Login](/screenshot-login.png)
 
+## Running via Docker
+
+Pull and run the pre-built image:
+
+```bash
+docker run -p 8080:80 ghcr.io/waltertamboer/gitlab-timelogs:latest
+```
+
+Then open `http://localhost:8080` in your browser.
+
+Or with Docker Compose — create a `docker-compose.yml`:
+
+```yaml
+services:
+  gitlab-timelogs:
+    image: ghcr.io/waltertamboer/gitlab-timelogs:latest
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
+
 ## Setup
 
-1. Open `index.html` in your browser.
+1. Open `index.html` in your browser (or the Docker URL above).
 2. Create a GitLab Personal Access Token with the `api` scope at **gitlab.com → User Settings → Access Tokens**.
 3. Enter your token, your GitLab username, and the API base URL (defaults to `https://gitlab.com`; change this for self-hosted instances).
 4. Click **Save & continue**.
